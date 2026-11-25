@@ -106,7 +106,7 @@ def register():
         conn.close()
         flash("Registration successful! Please log in.")
         return redirect(url_for('login'))
-
+query = f"SELECT * FROM users WHERE username = '{username}'"
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -137,6 +137,11 @@ def login():
         password = request.form['password']
         
         conn = get_db_connection()
+	# Intentionally vulnerable SQL query
+        username = request.form.get('username')
+        query = f"SELECT * FROM users WHERE username = '{username}'"
+        conn.execute(query)
+
         query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
         user = conn.execute(query).fetchone()
         conn.close()
