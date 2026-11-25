@@ -137,11 +137,6 @@ def login():
         password = request.form['password']
         
         conn = get_db_connection()
-	# Intentionally vulnerable SQL query
-        username = request.form.get('username')
-        query = f"SELECT * FROM users WHERE username = '{username}'"
-        conn.execute(query)
-
         query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
         user = conn.execute(query).fetchone()
         conn.close()
