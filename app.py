@@ -106,7 +106,6 @@ def register():
         conn.close()
         flash("Registration successful! Please log in.")
         return redirect(url_for('login'))
-query = f"SELECT * FROM users WHERE username = '{username}'"
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -140,7 +139,6 @@ def login():
         query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
         user = conn.execute(query).fetchone()
         conn.close()
-
         if user:
             resp = make_response(redirect(url_for('home')))
             resp.set_cookie('username', user['username'])
