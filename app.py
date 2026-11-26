@@ -1,6 +1,7 @@
 # app.py
 import sqlite3
 from flask import Flask, request, redirect, url_for, make_response, flash
+from markupsafe import escape
 
 def get_db_connection():
     conn = sqlite3.connect('database.db')
@@ -31,7 +32,7 @@ def home():
         <link rel="stylesheet" href="{ url_for('static', filename='css/style.css') }">
     </head>
     <body>
-        <h1>Welcome to My Shop{', ' + current_user['username'] if current_user else ''}!</h1>
+        <h1>Welcome to My Shop{', ' + escape(current_user['username']) if current_user else ''}!</h1>
         
         <nav>
             <a href="{ url_for('home') }">Home</a> | 
@@ -59,14 +60,16 @@ def home():
     for product in products:
         html += f"""
         <div>
-            <h2><a href="{url_for('product_page', product_id=product['id'])}">{product['name']}</a></h2>
-            <p><strong>Price:</strong> £{product['price']} | <strong>Seller:</strong> {product['seller_name']}</p>
-            <p>{product['description']}</p>
+            <h2><a href="{url_for('product_page', product_id=product['id'])}">{escape(product['name'])}</a></h2>
+            <p><strong>Price:</strong> £{escape(product['price'])} | <strong>Seller:</strong> {escape(product['seller_name'])}</p>
+            <p>{escape(product['description'])}</p>
         </div>
         <hr>
         """
     
     html += "</body></html>"
+    # False positive: Usernames and product data are HTML-escaped, and links are generated using url_for().
+    # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
     return html
 
 @app.route('/about')
@@ -187,8 +190,8 @@ def become_seller():
     conn = get_db_connection()
     
     if request.method == 'POST':
-        query = f"UPDATE users SET is_seller = 1 WHERE username = '{logged_in_user}'"
-        conn.execute(query)
+        query = "UPDATE users SET is_seller = 1 WHERE username = ?"
+        conn.execute(query, (logged_in_user,))
         conn.commit()
         conn.close()
         flash("Congratulations, you are now a seller!")
@@ -216,7 +219,7 @@ def add_product():
         return redirect(url_for('login'))
 
     conn = get_db_connection()
-    user = conn.execute(f"SELECT * FROM users WHERE username = '{logged_in_user}'").fetchone()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (logged_in_user,)).fetchone()
     
     if not (user['is_seller'] or user['is_admin']):
         flash("You must be a seller or admin to add products.")
@@ -228,8 +231,8 @@ def add_product():
         price = request.form['price']
         description = request.form['description']
 
-        query = f"INSERT INTO products (name, price, description, seller_name) VALUES ('{name}', '{price}', '{description}', '{logged_in_user}')"
-        conn.execute(query)
+        query = "INSERT INTO products (name, price, description, seller_name) VALUES (?, ?, ?, ?)"
+        conn.execute(query, (name, price, description, logged_in_user))
         conn.commit()
         conn.close()
         
@@ -265,8 +268,8 @@ def edit_product(product_id):
         return redirect(url_for('login'))
 
     conn = get_db_connection()
-    user_query = f"SELECT * FROM users WHERE username = '{logged_in_user}'"
-    user = conn.execute(user_query).fetchone()
+    user_query = "SELECT * FROM users WHERE username = ?"
+    user = conn.execute(user_query, (logged_in_user,)).fetchone()
     
     if not (user['is_seller'] or user['is_admin']):
         flash("You must be a seller or admin to manage products.")
@@ -278,34 +281,36 @@ def edit_product(product_id):
         price = request.form['price']
         description = request.form['description']
 
-        update_query = f"UPDATE products SET name = '{name}', price = '{price}', description = '{description}' WHERE id = {product_id}"
-        conn.execute(update_query)
+        update_query = "UPDATE products SET name = ?, price = ?, description = ? WHERE id = ?"
+        conn.execute(update_query, (name, price, description, product_id))
         conn.commit()
         conn.close()
         
         flash("Product updated successfully!")
         return redirect(url_for('home'))
 
-    product_query = f"SELECT * FROM products WHERE id = {product_id}"
-    product = conn.execute(product_query).fetchone()
+    product_query = "SELECT * FROM products WHERE id = ?"
+    product = conn.execute(product_query, (product_id,)).fetchone()
     conn.close()
 
     if not product:
         flash("Product not found.")
         return redirect(url_for('home'))
 
+    # False positive: All user-controlled values are escaped using MarkupSafe.
+    # nosemgrep: python.flask.security.injection.raw-html-concat.raw-html-format
     html = f"""
     <!DOCTYPE html><html><body>
-    <h1>Edit Product: {product['name']}</h1>
+    <h1>Edit Product: {escape(product['name'])}</h1>
     <form method="post">
         <label for="name">Product Name</label>
-        <input type="text" name="name" id="name" value="{product['name']}" required>
+        <input type="text" name="name" id="name" value="{escape(product['name'])}" required>
         <br>
         <label for="price">Price</label>
-        <input type="number" step="0.01" name="price" id="price" value="{product['price']}" required>
+        <input type="number" step="0.01" name="price" id="price" value="{escape(product['price'])}" required>
         <br>
         <label for="description">Description</label>
-        <textarea name="description" id="description" required>{product['description']}</textarea>
+        <textarea name="description" id="description" required>{escape(product['description'])}</textarea>
         <br>
         <button type="submit">Save Changes</button>
     </form>
@@ -313,6 +318,8 @@ def edit_product(product_id):
     <a href="{url_for('home')}">Cancel</a>
     </body></html>
     """
+    # False positive: All dynamic product values are HTML-escaped before rendering.
+    # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
     return html
 
 @app.route('/delete/<int:product_id>')
@@ -323,16 +330,16 @@ def delete_product(product_id):
         return redirect(url_for('login'))
 
     conn = get_db_connection()
-    user_query = f"SELECT * FROM users WHERE username = '{logged_in_user}'"
-    user = conn.execute(user_query).fetchone()
+    user_query = "SELECT * FROM users WHERE username = ?"
+    user = conn.execute(user_query, (logged_in_user,)).fetchone()
     
     if not (user['is_seller'] or user['is_admin']):
         flash("You must be a seller or admin to manage products.")
         conn.close()
         return redirect(url_for('home'))
 
-    delete_query = f"DELETE FROM products WHERE id = {product_id}"
-    conn.execute(delete_query)
+    delete_query = "DELETE FROM products WHERE id = ?"
+    conn.execute(delete_query, (product_id,))
     conn.commit()
     conn.close()
     
@@ -347,8 +354,8 @@ def product_page(product_id):
     conn = get_db_connection()
     
     if logged_in_user:
-        user_query = f"SELECT * FROM users WHERE username = '{logged_in_user}'"
-        current_user = conn.execute(user_query).fetchone()
+        user_query = "SELECT * FROM users WHERE username = ?"
+        user = conn.execute(user_query, (logged_in_user,)).fetchone()
 
     if request.method == 'POST':
         if not current_user:
@@ -357,19 +364,19 @@ def product_page(product_id):
             return redirect(url_for('login'))
         
         comment = request.form['comment']
-        query = f"INSERT INTO reviews (product_id, author_name, comment) VALUES ({product_id}, '{logged_in_user}', '{comment}')"
-        conn.execute(query)
+        query = "INSERT INTO reviews (product_id, author_name, comment) VALUES (?, ?, ?)"
+        conn.execute(query, (product_id, logged_in_user, comment))
         conn.commit()
         flash("Your review has been submitted!")
         
         conn.close()
         return redirect(url_for('product_page', product_id=product_id))
 
-    product_query = f'SELECT * FROM products WHERE id = {product_id}'
-    product = conn.execute(product_query).fetchone()
+    product_query = "SELECT * FROM products WHERE id = ?"
+    product = conn.execute(product_query, (product_id,)).fetchone()
     
-    reviews_query = f'SELECT * FROM reviews WHERE product_id = {product_id}'
-    reviews = conn.execute(reviews_query).fetchall()
+    reviews_query = "SELECT * FROM reviews WHERE product_id = ?"
+    reviews = conn.execute(reviews_query, (product_id,)).fetchall()
     conn.close() 
 
     if not product:
@@ -386,12 +393,14 @@ def product_page(product_id):
                 </p>
             """
 
+    # False positive: Product details are escaped, and edit/delete links are generated internally.
+    # nosemgrep: python.flask.security.injection.raw-html-concat.raw-html-format
     html = f"""
     <!DOCTYPE html><html><body>
-    <h1>{product['name']}</h1>
-    <p><strong>Price:</strong> £{product['price']}</p>
-    <p><strong>Seller:</strong> {product['seller_name']}</p>
-    <p>{product['description']}</p>
+    <h1>{escape(product['name'])}</h1>
+    <p><strong>Price:</strong> £{escape(product['price'])}</p>
+    <p><strong>Seller:</strong> {escape(product['seller_name'])}</p>
+    <p>{escape(product['description'])}</p>
     
     {edit_delete_links}
     
@@ -400,7 +409,9 @@ def product_page(product_id):
     """
     if reviews:
         for review in reviews:
-            html += f"<p><strong>{review['author_name']}:</strong> {review['comment']}</p>"
+            # False positive: Review author names and comments are escaped using MarkupSafe.
+            # nosemgrep: python.flask.security.injection.raw-html-concat.raw-html-format
+            html += f"<p><strong>{escape(review['author_name'])}:</strong> {escape(review['comment'])}</p>"
     else:
         html += "<p>No reviews yet.</p>"
 
@@ -414,6 +425,8 @@ def product_page(product_id):
         """
         
     html += "<br><a href='/'>Back to Home</a></body></html>"
+    # False positive: Product details and reviews are escaped, and links are generated internally.
+    # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
     return html
 
 @app.route('/admin')
@@ -424,7 +437,7 @@ def admin_panel():
         return redirect(url_for('login'))
     
     conn = get_db_connection()
-    user = conn.execute(f"SELECT * FROM users WHERE username = '{logged_in_user}'").fetchone()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (logged_in_user,)).fetchone()
     
     if not user or not user['is_admin']:
         flash("You are not authorised to view this page.")
@@ -435,30 +448,34 @@ def admin_panel():
     products = conn.execute('SELECT id, name FROM products').fetchall()
     conn.close()
 
+    # False positive: The administrator username is escaped using MarkupSafe.
+    # nosemgrep: python.django.security.injection.raw-html-format.raw-html-format, python.flask.security.injection.raw-html-concat.raw-html-format
     html = f"""
     <!DOCTYPE html>
     <html><head><title>Admin Panel</title></head>
     <body>
-        <h1>Admin Panel - Welcome, {user['username']}</h1>
+        <h1>Admin Panel - Welcome, {escape(user['username'])}</h1>
         <h2>Users</h2>
         <ul>
     """
     for u in users:
-        html += f"<li>{u['username']}</li>"
+        html += f"<li>{escape(u['username'])}</li>"
     
     html += "</ul><h2>All Products</h2><ul>"
 
     for p in products:
         html += f"""
         <li>
-            {p['name']} 
+            {escape(p['name'])} 
             <a href="{url_for('delete_product', product_id=p['id'])}">[Delete]</a>
         </li>
         """
 
     html += "</ul><br><a href='/'>Back to Home</a></body></html>"
+    # False positive: All usernames and product names are escaped, and links are generated using url_for().
+    # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
     return html
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
     
