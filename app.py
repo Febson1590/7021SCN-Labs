@@ -18,8 +18,8 @@ def home():
     conn = get_db_connection()
     
     if logged_in_user:
-        query = f"SELECT * FROM users WHERE username = '{logged_in_user}'"
-        current_user = conn.execute(query).fetchone()
+        query = "SELECT * FROM users WHERE username = ?"
+        current_user = conn.execute(query, (logged_in_user,)).fetchone()
 
     products = conn.execute('SELECT * FROM products').fetchall()
     conn.close()
@@ -95,8 +95,8 @@ def register():
 
         conn = get_db_connection()
         try:
-            query = f"INSERT INTO users (username, password) VALUES ('{username}', '{password}')"
-            conn.execute(query)
+            query = "INSERT INTO users (username, password) VALUES (?, ?)"
+            conn.execute(query, (username, password))
             conn.commit()
         except conn.IntegrityError:
             flash("Username already exists. Please choose another.")
@@ -136,8 +136,8 @@ def login():
         password = request.form['password']
         
         conn = get_db_connection()
-        query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
-        user = conn.execute(query).fetchone()
+        query = "SELECT * FROM users WHERE username = ? AND password = ?"
+        user = conn.execute(query, (username, password)).fetchone()
         conn.close()
         if user:
             resp = make_response(redirect(url_for('home')))
